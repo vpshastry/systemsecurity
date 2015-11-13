@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="shortcut icon"  href="favicon.png">
+
+    <title>IPS Intrusion Prevention System</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="jquery-ui-themes/themes/smoothness/jquery-ui.css" rel="stylesheet">
+    <link href="jquery-ui.css" rel="stylesheet">
+    <link href="tabStyle.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="signin.css" rel="stylesheet">
+    <script src="jquery.js"></script>
+    <script src="jquery-ui.js"></script>
+    <script src="sha1.js"></script>
+
+  </head>
+
+  <body style="background-image: url(http://192.168.56.101/ips/ips.jpg); background-size: cover; background-position: center -300px; background-repeat: no-repeat;">
+
+    <div class="container">
+	<div class="jumbotron" id="authenticate" style="background-color: rgba(238, 238, 238, 0.8);">
+	  <h1 class="center-block" style="width: 800px;">Intrusion Prevention System</h1>
+          <form class="form-signin">
+ 	   <h2 class="form-signin-heading">IPS Login</h2>
+ 	   <h4 id="authFail" style="display:none; color:red">Authentication Failed</h4>
+ 	   <label for="inputUsername" class="sr-only">Username</label>
+ 	   <input type="text" id="inputUsername" class="form-control" placeholder="Username" required autofocus>
+ 	   <label for="inputPassword" class="sr-only">Password</label>
+ 	   <input type="password" id="inputPassword" class="form-control" placeholder="Password" required>
+ 	   <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
+          </form>
+        </div>
+
+
+
+    </div> <!-- /container -->
+        <div id="tabs" style="display: none;width:70%;height:600px;margin:0 auto">
+          <ul>
+            <li><a href="#tabs-1">Banned IPs</a></li>
+            <li><a href="#tabs-2">Failed Attempts</a></li>
+          </ul>
+          <div id="tabs-1">
+            <ul id="bannedIPsList"></ul>
+          </div>
+          <div id="tabs-2">
+            <ul id="failedAttemptsList"></ul>
+          </div>
+        </div>
+
+
+  </body>
+<script>
+$(function() {
+    $( "#tabs" ).tabs();
+  });
+AUTHENTICATE = 0
+GETBANNEDIPs = 1
+GETFAILEDATTEMPTs = 2
+AUTHSUCCESS = 3
+AUTHFAIL = 4
+authAttempt = 0
+webServer = '192.168.56.101:9001'
+username=''
+password=''
+bannedIPTimer = 0
+failedAttemptTimer = 0 
+$('.form-signin').submit(function(event){
+    event.preventDefault();
+    $('#authFail').slideUp()
+    username = $('#inputUsername').val()
+    password = SHA1($('#inputPassword').val())
+    
+    if( ! authAttempt){
+        authAttempt = 1
+	ws = new WebSocket("ws://" + webServer)
+        ws.onmessage = function(msg){
+            console.log('Received message: ' + msg.data)
+	    window.msg = JSON.stringify(msg.data)
+	    msg = JSON.parse(msg.data)
+
+	    if(msg.action == AUTHENTICATE){
+	        if(msg.data == AUTHSUCCESS) {
+	            console.log('AUTHSUCCESS')
+		    $('#authenticate').slideUp(function(){$('#tabs').show()})
+                    bannedIPTimer = setInterval(getBannedIPs, 2000)
+                    failedAttemptTimer = setInterval(getFailedAttempts, 3000)
+	        }
+	        else if(msg.data == AUTHFAIL){
+	            console.log('AUTHFAIL')
+                    $('#authFail').slideDown()
+	        }
+            }
+	    else if(msg.action == GETBANNEDIPs){
+	        console.log("Banned IPs: " + msg.data)
+	    }
+	    else if(msg.action == GETFAILEDATTEMPTs){
+	        console.log("Failed Attempts: " + msg.data)
+	    }
+        }
+        ws.onopen = authenticate
+    }
+    else{
+        authenticate()
+    }
+})
+
+function authenticate(){
+        msg = {action: AUTHENTICATE, data:{username:username, password:password}}
+        ws.send(JSON.stringify(msg))
+}
+
+function getBannedIPs(){
+    console.log("getBannedIPs")
+    m = {action: GETBANNEDIPs, data: {username: username, password: password}}
+    ws.send(JSON.stringify(m))
+}
+
+function getFailedAttempts(){
+    console.log("getFailedAttempts")
+    m = {action: GETFAILEDATTEMPTs, data: {username: username, password: password}}
+    ws.send(JSON.stringify(m))
+}
+
+
+</script>
+</html>
+
