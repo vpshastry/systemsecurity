@@ -12,11 +12,20 @@ from websocket_server import WebsocketServer
 
 BAN = 0
 UNBAN = 1
-BANTIMER = 20  # in seconds. How long to BAN
+BANTIMER = 10  # in seconds. How long to BAN
 THRESHOLDFAILEDATTEMPTS = 3 # Total Failed attempts within FAILEDATTEMPTSINTERVAL before IP gets BANNED 
-FAILEDATTEMPTSINTERVAL = 30 # in seconds.  
+FAILEDATTEMPTSINTERVAL = 60 # in seconds.  
 TIMEOUT = 5000
 LASTRUNTIME = time.time()
+AUTHENTICATE = 0  
+GETBANNEDIPs = 1
+GETFAILEDATTEMPTs = 2
+AUTHSUCCESS = 3
+AUTHFAIL = 4
+BANNEDIP = 5
+UNBANNEDIP = 6
+FAILEDATTEMPT = 7
+server = None
 
 failedAttempts = {}
 bannedIPs = {}
@@ -46,6 +55,8 @@ def banIP(IP, dport, timer = BANTIMER):
         bannedIPs[ip.IP] = ip
         chain.insert_rule(ip.rule)
         print 'IP:' + ip.IP + ' BANNED at ' + time.strftime("%b %d %H:%M:%S")
+        resp = {"action": BANNEDIP, "data":{"IP":ip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(ip.time)), "timer":ip.timer}}
+        server.send_message_to_all(json.dumps(resp))
 
 def unbanIP(IP):
     
@@ -58,6 +69,8 @@ def unbanIP(IP):
             chain.delete_rule(bannedIPs[IP].rule)
             print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
             del(bannedIPs[IP])
+            resp = {"action": UNBANNEDIP, "data":{"IP":IP}}
+            server.send_message_to_all(json.dumps(resp))
         
 def unbanIPcallback(arg):
      
@@ -69,6 +82,8 @@ def unbanIPcallback(arg):
              chain.delete_rule(bannedIP.rule)
              print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
              del(bannedIPs[bannedIP.IP])
+	     resp = {"action": UNBANNEDIP, "data":{"IP":bannedIP.IP}}
+	     server.send_message_to_all(json.dumps(resp))
      
 
 class service():
@@ -140,6 +155,8 @@ class EventHandler(pyinotify.ProcessEvent):
                                     if fipAttempts[j].rate >= service.thresholdFailedAttempts:
                                         print 'Failed attempt rate exceeded for IP:' + fip.IP + '. BAN'
                                         banIP(fip.IP, service.port, service.banTimer)
+                                        resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                                        server.send_message_to_all(json.dumps(resp))
                                         del(failedAttempts[fip.IP])
                                         ban = 1
                                         break
@@ -148,6 +165,8 @@ class EventHandler(pyinotify.ProcessEvent):
                         if not ban : 
                             print 'Append this failed attempt'
                             failedAttempts[fip.IP].append(fip)
+                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                            server.send_message_to_all(json.dumps(resp))
 
                     else:
                         print "First failed attempt from IP: " + fip.IP
@@ -158,14 +177,11 @@ class EventHandler(pyinotify.ProcessEvent):
                             print  'Append this attempt to failedAttempts'
                             fip.rate = 1
                             failedAttempts[fip.IP] = [fip]
+                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                            server.send_message_to_all(json.dumps(resp))
 
 
 def webServer():
-    AUTHENTICATE = 0  
-    GETBANNEDIPs = 1
-    GETFAILEDATTEMPTs = 2
-    AUTHSUCCESS = 3
-    AUTHFAIL = 4
     
     usersfd = open("users.json", "r") 
     users = json.load(usersfd)
@@ -206,7 +222,7 @@ def webServer():
                 for bannedIP in bannedIPs.values():
                     ip = {}
                     ip["IP"] = bannedIP.IP
-                    ip["time"] = bannedIP.time
+                    ip["time"] = time.strftime("%b %d %H:%M:%S", time.localtime(bannedIP.time))
                     ip["timer"] = bannedIP.timer - (time.time() - bannedIP.time)
                     resp["data"].append(ip)
                 server.send_message(client, json.dumps(resp))
@@ -226,15 +242,17 @@ def webServer():
                     ip["IP"] = failedAttempt
                     ip["attempts"] = []
                     for attempt in failedAttempts[failedAttempt]:
-                        ip["attempts"].append(attempt.time)
-                        resp["data"].append(ip)
+                        ip["attempts"].append(time.strftime("%b %d %H:%M:%S", time.localtime(attempt.time)))
+                        
+                    resp["data"].append(ip)
 
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"
                 resp["data"] = AUTHFAIL
                 server.send_message(client, json.dumps(resp))
-        
+    
+    global server        
     PORT=9001
     server = WebsocketServer(PORT, host='0.0.0.0')
     server.set_fn_new_client(new_client)

@@ -45,16 +45,37 @@
 
 
     </div> <!-- /container -->
-        <div id="tabs" style="display: none;width:70%;height:600px;margin:0 auto">
+        <div id="tabs" style="display: none;width:70%;height:600px;margin:0 auto;overflow:scroll">
           <ul>
             <li><a href="#tabs-1">Banned IPs</a></li>
             <li><a href="#tabs-2">Failed Attempts</a></li>
           </ul>
           <div id="tabs-1">
-            <ul id="bannedIPsList"></ul>
+          <table id="tableBannedIPs" class="table" style="width:100%">
+           <thead>
+	       <td>IP
+	       </td>
+	       <td>SERVICE
+	       </td>
+	       <td>TIMER
+	       </td>
+	       <td>TIME
+	       </td>
+	   </thead>
+         </table>
           </div>
           <div id="tabs-2">
             <ul id="failedAttemptsList"></ul>
+          <table id="tableFailedAttempts" class="table" style="width:100%">
+           <thead>
+	       <td>IP
+	       </td>
+	       <td>SERVICE
+	       </td>
+	       <td>TIME
+	       </td>
+	   </thead>
+         </table>
           </div>
         </div>
 
@@ -69,6 +90,12 @@ GETBANNEDIPs = 1
 GETFAILEDATTEMPTs = 2
 AUTHSUCCESS = 3
 AUTHFAIL = 4
+BANNEDIP = 5
+UNBANNEDIP = 6
+FAILEDATTEMPT = 7
+
+
+
 authAttempt = 0
 webServer = '192.168.56.101:9001'
 username=''
@@ -93,8 +120,10 @@ $('.form-signin').submit(function(event){
 	        if(msg.data == AUTHSUCCESS) {
 	            console.log('AUTHSUCCESS')
 		    $('#authenticate').slideUp(function(){$('#tabs').show()})
-                    bannedIPTimer = setInterval(getBannedIPs, 2000)
-                    failedAttemptTimer = setInterval(getFailedAttempts, 3000)
+                    //bannedIPTimer = setInterval(getBannedIPs, 2000)
+                    //failedAttemptTimer = setInterval(getFailedAttempts, 3000)
+                    getBannedIPs()
+		    getFailedAttempts()
 	        }
 	        else if(msg.data == AUTHFAIL){
 	            console.log('AUTHFAIL')
@@ -102,11 +131,40 @@ $('.form-signin').submit(function(event){
 	        }
             }
 	    else if(msg.action == GETBANNEDIPs){
-	        console.log("Banned IPs: " + msg.data)
+	        console.log("Banned IPs: " + msg.data.length)
+		if(msg.data.length){
+		    for(i in msg.data){
+		        ip = msg.data[i].IP
+			time = msg.data[i].time
+			timer = msg.data[i].timer
+			showBannedIP(ip, time, timer)
+		    }
+		}
+		else
+		    console.log("No Banned IPs")
 	    }
 	    else if(msg.action == GETFAILEDATTEMPTs){
-	        console.log("Failed Attempts: " + msg.data)
+	        console.log("Failed Attempts: " + msg.data.length)
+		if(msg.data.length){
+		    for(i in msg.data){
+		        ip = msg.data[i].IP
+			attempts = msg.data[i].attempts
+			showFailedAttempt(ip, attempts)
+		    }
+		}
+		else
+		    console.log("No Failed Attempts")
 	    }
+	    else if(msg.action == FAILEDATTEMPT){
+	        showFailedAttempt(msg.data.IP, [msg.data.time]) 
+	    }
+	    else if(msg.action == BANNEDIP){
+	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer) 
+	    }
+	    else if(msg.action == UNBANNEDIP){
+	        $(document.getElementById(msg.data.IP)).remove()
+	    }
+
         }
         ws.onopen = authenticate
     }
@@ -130,6 +188,19 @@ function getFailedAttempts(){
     console.log("getFailedAttempts")
     m = {action: GETFAILEDATTEMPTs, data: {username: username, password: password}}
     ws.send(JSON.stringify(m))
+}
+
+function showFailedAttempt(ip, attemptsArr){
+    console.log("showFailedAttempt ip=" + ip + " time=" + JSON.stringify(attemptsArr) )
+    for(i=0;i<attemptsArr.length;i++){
+        $('<tr id="'+ip+'"><td>'+ip+'</td><td></td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
+    }
+}
+
+function showBannedIP(ip, iptime, iptimer){
+    console.log("showBannedIP ip=" + ip +  " " + iptime + " " + iptimer  )
+    $('<tr id="'+ip+'"><td>'+ip+'</td><td></td><td>'+iptimer+'</td><td>'+iptime+'</td></tr>').appendTo($('#tableBannedIPs thead'))
+
 }
 
 
