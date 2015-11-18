@@ -199,7 +199,11 @@ function showFailedAttempt(ip, attemptsArr, service){
 
 function showBannedIP(ip, iptime, iptimer, service){
     console.log("showBannedIP ip=" + ip +  " " + iptime + " " + iptimer  )
-    $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td></tr>').appendTo($('#tableBannedIPs thead'))
+    $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td><button type="button">Unban</button></tr>').appendTo($('#tableBannedIPs thead')).find('button').click(function(event){
+	 m = {action: UNBANIPs, data: {username: username, password: password, IP:ip, service: service}}
+	 ws.send(JSON.stringify(m))
+
+})
 
 }
 
