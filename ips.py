@@ -30,7 +30,7 @@ AUTHFAIL = 4
 BANNEDIP = 5
 UNBANNEDIP = 6
 FAILEDATTEMPT = 7
-UNBANIP = 8
+UNBANIPs = 8
 server = None
 
 failedAttempts = {}
@@ -90,7 +90,7 @@ def unbanIPcallback(arg):
              chain.delete_rule(bannedIP.rule)
              print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
              del(bannedIPs[(bannedIP.IP, bannedIP.service)])
-	     resp = {"action": UNBANNEDIP, "data":{"IP":bannedIP.IP}}
+	     resp = {"action": UNBANNEDIP, "data":{"IP":bannedIP.IP, "service":bannedIP.service}}
 	     server.send_message_to_all(json.dumps(resp))
      
 
@@ -267,14 +267,13 @@ def webServer():
 
         elif msg["action"] == UNBANIPs:
             print 'msg is UNBANIPs'
-            resp = {"action": UNBANIPs, "data": []}
+            resp = {"action": UNBANIPs, "data": {}}
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
             if username and password and users.has_key(username) and password == users[username]:
-                for IP in msg["data"]:
-                    unbanIP(IP)
-                    resp["data"].append(IP)
-
+	        unbanIP(IP, msg["data"].IP, msg["data"].service)
+	        resp["data"]["IP"] = msg["data"].IP
+	        resp["data"]["service"] = msg["data"].service
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"

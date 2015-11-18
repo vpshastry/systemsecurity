@@ -61,6 +61,8 @@
 	       </td>
 	       <td>TIME
 	       </td>
+               <td>REMOVE
+               </td>
 	   </thead>
          </table>
           </div>
@@ -93,6 +95,7 @@ AUTHFAIL = 4
 BANNEDIP = 5
 UNBANNEDIP = 6
 FAILEDATTEMPT = 7
+UNBANIPs = 8
 
 
 
@@ -199,9 +202,11 @@ function showFailedAttempt(ip, attemptsArr, service){
 
 function showBannedIP(ip, iptime, iptimer, service){
     console.log("showBannedIP ip=" + ip +  " " + iptime + " " + iptimer  )
-    $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td><button type="button">Unban</button></tr>').appendTo($('#tableBannedIPs thead')).find('button').click(function(event){
+    $('<tr id="'+ip+service+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td><td><button id="button'+ip+service+'" type="button">Unban</button></td></tr>').appendTo($('#tableBannedIPs thead'))
+        $('#button'+ip+service).click(function(event){
 	 m = {action: UNBANIPs, data: {username: username, password: password, IP:ip, service: service}}
 	 ws.send(JSON.stringify(m))
+         $('#'+ip+service).remove()
 
 })
 
