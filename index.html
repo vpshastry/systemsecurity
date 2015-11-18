@@ -149,17 +149,17 @@ $('.form-signin').submit(function(event){
 		    for(i in msg.data){
 		        ip = msg.data[i].IP
 			attempts = msg.data[i].attempts
-			showFailedAttempt(ip, attempts)
+			showFailedAttempt(ip, attempts, msg.data[i].service)
 		    }
 		}
 		else
 		    console.log("No Failed Attempts")
 	    }
 	    else if(msg.action == FAILEDATTEMPT){
-	        showFailedAttempt(msg.data.IP, [msg.data.time]) 
+	        showFailedAttempt(msg.data.IP, [msg.data.time], msg.data.service) 
 	    }
 	    else if(msg.action == BANNEDIP){
-	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer) 
+	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer, msg.data.service) 
 	    }
 	    else if(msg.action == UNBANNEDIP){
 	        $(document.getElementById(msg.data.IP)).remove()
@@ -190,16 +190,16 @@ function getFailedAttempts(){
     ws.send(JSON.stringify(m))
 }
 
-function showFailedAttempt(ip, attemptsArr){
+function showFailedAttempt(ip, attemptsArr, service){
     console.log("showFailedAttempt ip=" + ip + " time=" + JSON.stringify(attemptsArr) )
     for(i=0;i<attemptsArr.length;i++){
-        $('<tr id="'+ip+'"><td>'+ip+'</td><td></td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
+        $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
     }
 }
 
-function showBannedIP(ip, iptime, iptimer){
+function showBannedIP(ip, iptime, iptimer, service){
     console.log("showBannedIP ip=" + ip +  " " + iptime + " " + iptimer  )
-    $('<tr id="'+ip+'"><td>'+ip+'</td><td></td><td>'+iptimer+'</td><td>'+iptime+'</td></tr>').appendTo($('#tableBannedIPs thead'))
+    $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td></tr>').appendTo($('#tableBannedIPs thead'))
 
 }
 
