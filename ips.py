@@ -12,7 +12,7 @@ from websocket_server import WebsocketServer
 
 BAN = 0
 UNBAN = 1
-BANTIMER = 10  # in seconds. How long to BAN
+BANTIMER = 30  # in seconds. How long to BAN
 THRESHOLDFAILEDATTEMPTS = 3 # Total Failed attempts within FAILEDATTEMPTSINTERVAL before IP gets BANNED 
 FAILEDATTEMPTSINTERVAL = 60 # in seconds.  
 TIMEOUT = 5000
