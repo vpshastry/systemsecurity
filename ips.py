@@ -10,13 +10,18 @@ import re
 import json
 from websocket_server import WebsocketServer
 
+# TODO: 
+DEBUG = False
+
 BAN = 0
 UNBAN = 1
-BANTIMER = 30  # in seconds. How long to BAN
+BANTIMER = 300  # in seconds. How long to BAN
 THRESHOLDFAILEDATTEMPTS = 3 # Total Failed attempts within FAILEDATTEMPTSINTERVAL before IP gets BANNED 
-FAILEDATTEMPTSINTERVAL = 60 # in seconds.  
+FAILEDATTEMPTSINTERVAL = 600 # in seconds.  
 TIMEOUT = 5000
 LASTRUNTIME = time.time()
+
+#Enums
 AUTHENTICATE = 0  
 GETBANNEDIPs = 1
 GETFAILEDATTEMPTs = 2
@@ -33,17 +38,17 @@ bannedIPs = {}
 services = {}
 
 
-def banIP(IP, dport, timer = BANTIMER):
+def banIP(IP, dport, service, timer = BANTIMER):
     """Returns 1 if IP is already BANNED/UNBANNED
        Returns 0 if BANNED/UNBANNED successfully
     """
 
     print 'banIP:'
-    if IP in bannedIPs:
+    if (IP, service) in bannedIPs:
         print 'IP:' + IP + 'is already BANNED'
         return 1
     else:
-        ip = bannedIP(IP, time.time(), timer)
+        ip = bannedIP(IP, time.time(), service, timer)
         chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
         ip.rule = iptc.Rule(chain=chain)
         ip.rule.src = ip.IP + "/255.255.255.255"
@@ -53,36 +58,38 @@ def banIP(IP, dport, timer = BANTIMER):
         match = iptc.Match(ip.rule,"tcp")
         match.dport = dport
         ip.rule.add_match(match)
-        bannedIPs[ip.IP] = ip
+        bannedIPs[(ip.IP, service)] = ip
         chain.insert_rule(ip.rule)
         print 'IP:' + ip.IP + ' BANNED at ' + time.strftime("%b %d %H:%M:%S")
-        resp = {"action": BANNEDIP, "data":{"IP":ip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(ip.time)), "timer":ip.timer}}
+        resp = {"action": BANNEDIP, "data":{"IP":ip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(ip.time)), "timer":ip.timer, "service":ip.service}}
         server.send_message_to_all(json.dumps(resp))
 
-def unbanIP(IP):
+def unbanIP(IP, service):
     
         print 'unbanIP:'
-        if IP not in bannedIPs:
+        if (IP, service) not in bannedIPs:
             print 'IP:' + IP + 'is already UNBANNED'
             return 0
         else:
             chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
             chain.delete_rule(bannedIPs[IP].rule)
             print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
-            del(bannedIPs[IP])
+            del(bannedIPs[(IP, service)])
             resp = {"action": UNBANNEDIP, "data":{"IP":IP}}
             server.send_message_to_all(json.dumps(resp))
         
 def unbanIPcallback(arg):
      
-     print 'callback:'
+     if DEBUG:
+     	 print 'callback:'
+
      for bannedIP in bannedIPs.values():
          print 'bannedIP is ' + bannedIP.IP
          if time.time() - bannedIP.time >= bannedIP.timer :
              chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
              chain.delete_rule(bannedIP.rule)
              print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
-             del(bannedIPs[bannedIP.IP])
+             del(bannedIPs[(bannedIP.IP, bannedIP.service)])
 	     resp = {"action": UNBANNEDIP, "data":{"IP":bannedIP.IP}}
 	     server.send_message_to_all(json.dumps(resp))
      
@@ -103,15 +110,17 @@ class IP(object):
         self.time = time
 
 class bannedIP(IP):
-    def __init__(self, IP, time, timer = BANTIMER):
+    def __init__(self, IP, time, service, timer = BANTIMER):
         super(bannedIP, self).__init__(IP, time)
         self.timer = timer
         self.rule = None
+        self.service = service
 
 class failedAttemptIP(IP):
-    def __init__(self, IP, time):
+    def __init__(self, IP, time, service):
         super(failedAttemptIP, self).__init__(IP, time)
         self.rate = None
+        self.service = service 
 
 class EventHandler(pyinotify.ProcessEvent):
     def my_init(self, monitoredf=None):
@@ -131,13 +140,15 @@ class EventHandler(pyinotify.ProcessEvent):
                     # Determine to ban or not to ban
                     # If to ban, clear all failed attempts in failedAttempts from this IP  
                     # Else if not to ban, append this failed attempt from this IP to attempt list for this IP in failedAttempts
-                    fip = failedAttemptIP(ip, time.time())
+                    fip = failedAttemptIP(ip, time.time(), service.name)
                     fip.rate = 1
 
+		    print "FIP start: ", fip.IP, fip.service, fip.time
                     # Rate of failed attempts should not be more than thresholdfailedAttempts  within
                     # failedAttemptInterval seconds
-                    if fip.IP in failedAttempts:
-                        fipAttempts = failedAttempts[fip.IP]
+                    if (fip.IP, fip.service) in failedAttempts:
+			print "we found"
+                        fipAttempts = failedAttempts[(fip.IP, fip.service)]
                     # Every failed attempt has its start and end interval
                     # If this fip failed attempt falls within such interval of a failed attempt,
                     # it also falls in interval of subsequent failed attempts.
@@ -155,30 +166,30 @@ class EventHandler(pyinotify.ProcessEvent):
                                     fipAttempts[j].rate+=1
                                     if fipAttempts[j].rate >= service.thresholdFailedAttempts:
                                         print 'Failed attempt rate exceeded for IP:' + fip.IP + '. BAN'
-                                        banIP(fip.IP, service.port, service.banTimer)
-                                        resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                                        banIP(fip.IP, service.port, service.name, service.banTimer)
+                                        resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
                                         server.send_message_to_all(json.dumps(resp))
-                                        del(failedAttempts[fip.IP])
+                                        del(failedAttempts[(fip.IP, fip.service)])
                                         ban = 1
                                         break
                                 break
                                 
                         if not ban : 
                             print 'Append this failed attempt'
-                            failedAttempts[fip.IP].append(fip)
-                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                            failedAttempts[(fip.IP, fip.service)].append(fip)
+                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
                             server.send_message_to_all(json.dumps(resp))
 
                     else:
                         print "First failed attempt from IP: " + fip.IP
                         if service.thresholdFailedAttempts <= 1:
                             print "Threshold for serivce:" + service.name + 'is 1. BAN' 
-                            banIP(fip.IP, service.port, service.banTimer )
+                            banIP(fip.IP, service.port, service.name, service.banTimer)
                         else:
                             print  'Append this attempt to failedAttempts'
                             fip.rate = 1
-                            failedAttempts[fip.IP] = [fip]
-                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time))}}
+                            failedAttempts[(fip.IP, service.name)] = [fip]
+                            resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
                             server.send_message_to_all(json.dumps(resp))
 
 
@@ -240,8 +251,9 @@ def webServer():
             if username and password and users.has_key(username) and password == users[username]:
                 for failedAttempt in failedAttempts:
                     ip = {}
-                    ip["IP"] = failedAttempt
+                    ip["IP"] = failedAttempt[0]
                     ip["attempts"] = []
+                    ip["service"] = failedAttempt[1] 
                     for attempt in failedAttempts[failedAttempt]:
                         ip["attempts"].append(time.strftime("%b %d %H:%M:%S", time.localtime(attempt.time)))
                         
