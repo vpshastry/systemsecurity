@@ -30,7 +30,7 @@ AUTHFAIL = 4
 BANNEDIP = 5
 UNBANNEDIP = 6
 FAILEDATTEMPT = 7
-
+UNBANIP = 8
 server = None
 
 failedAttempts = {}
@@ -264,6 +264,23 @@ def webServer():
                 print "AUTHFAIL"
                 resp["data"] = AUTHFAIL
                 server.send_message(client, json.dumps(resp))
+
+        elif msg["action"] == UNBANIPs:
+            print 'msg is UNBANIPs'
+            resp = {"action": UNBANIPs, "data": []}
+            username = msg["data"].get("username") if msg["data"].has_key("username") else None
+            password = msg["data"].get("password") if msg["data"].has_key("password") else None
+            if username and password and users.has_key(username) and password == users[username]:
+                for IP in msg["data"]:
+                    unbanIP(IP)
+                    resp["data"].append(IP)
+
+                server.send_message(client, json.dumps(resp))
+            else:
+                print "AUTHFAIL"
+                resp["data"] = AUTHFAIL
+                server.send_message(client, json.dumps(resp))
+
     
     global server        
     PORT=9001

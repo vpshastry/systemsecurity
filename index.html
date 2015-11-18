@@ -162,7 +162,7 @@ $('.form-signin').submit(function(event){
 	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer, msg.data.service) 
 	    }
 	    else if(msg.action == UNBANNEDIP){
-	        $(document.getElementById(msg.data.IP)).remove()
+	        $(document.getElementById(msg.data.IP + msg.data.service)).remove()
 	    }
 
         }
@@ -193,7 +193,7 @@ function getFailedAttempts(){
 function showFailedAttempt(ip, attemptsArr, service){
     console.log("showFailedAttempt ip=" + ip + " time=" + JSON.stringify(attemptsArr) )
     for(i=0;i<attemptsArr.length;i++){
-        $('<tr id="'+ip+'"><td>'+ip+'</td><td>'+service+'</td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
+        $('<tr id="'+ip +service+'"><td>'+ip+'</td><td>'+service+'</td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
     }
 }
 
