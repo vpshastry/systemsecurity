@@ -72,11 +72,9 @@ def unbanIP(IP, service):
             return 0
         else:
             chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
-            chain.delete_rule(bannedIPs[IP].rule)
-            print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
+            chain.delete_rule(bannedIPs[IP, service].rule)
+            print 'IP:' + IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
             del(bannedIPs[(IP, service)])
-            resp = {"action": UNBANNEDIP, "data":{"IP":IP}}
-            server.send_message_to_all(json.dumps(resp))
         
 def unbanIPcallback(arg):
      
@@ -124,15 +122,17 @@ class failedAttemptIP(IP):
 
 class EventHandler(pyinotify.ProcessEvent):
     def my_init(self, monitoredf=None):
-        self.file = open(monitoredf, "r")
-        self.file.seek(0, os.SEEK_END)
-
+        self.files = {}
+        for pathname in monitoredf:
+	    self.files[pathname] = open(pathname, "r")
+	    self.files[pathname].seek(0, os.SEEK_END)
+            
     def process_IN_MODIFY(self, event):
         print "Modified:", event.pathname
-        lines = self.file.readlines()
+        lines = self.files[event.pathname].readlines()
         for line in lines:
             for service in services.values():
-                m = re.match(service.pattern,line)
+                m = re.search(service.pattern,line)
                 if m:
                     ip = m.group('HOST')
                     ftime = m.group('TIME')
@@ -305,9 +305,14 @@ s = service("SSH", "22")
 s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}) .* sshd.* Failed .*from (?P<HOST>\S+)')
 services[s.name] = s
 
+s = service("PHPMYADMIN", "80")
+s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}).* phpmyadmin.* failed login from (?P<HOST>\S+),')
+services[s.name] = s
+
 wm = pyinotify.WatchManager()
 mask = pyinotify.IN_MODIFY
-pathname = "/var/log/auth.log"
+pathname = ["/var/log/auth.log", "/var/log/apache2/error.log"]
+
 
 handler = EventHandler(monitoredf = pathname)
 notifier = pyinotify.Notifier(wm, handler, timeout = TIMEOUT)
@@ -315,6 +320,7 @@ wdd = wm.add_watch(pathname, mask, rec=False)
 t = threading.Thread(name='webserver', target=webServer)
 t.setDaemon(True)
 t.start()
+iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT").flush()
 notifier.loop(callback = unbanIPcallback)
 
 
