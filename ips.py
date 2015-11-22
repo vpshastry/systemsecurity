@@ -150,8 +150,6 @@ class EventHandler(pyinotify.ProcessEvent):
         for line in lines:
             for service in services.values():
                 m = re.search(service.pattern,line)
-                if not m:
-                   print "did not match"
                 if m:
                     ip = m.group('HOST')
                     ftime = m.group('TIME')
