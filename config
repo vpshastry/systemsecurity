@@ -16,5 +16,5 @@ port = 22
 [PHPMYADMIN]
 path = /var/log/apache2/error.log
 pattern = (?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}).* phpmyadmin.* failed login from (?P<HOST>\S+)
-port = 8
+port = 80
 
