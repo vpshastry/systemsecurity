@@ -10,6 +10,7 @@ import os
 import re
 import json
 import ConfigParser
+import logging
 from websocket_server import WebsocketServer
 
 
@@ -35,6 +36,8 @@ BANNEDIP = 5
 UNBANNEDIP = 6
 FAILEDATTEMPT = 7
 UNBANIPs = 8
+CHANGECONFIG = 9
+
 server = None
 
 MODULAR_CONFIG = {}
@@ -52,6 +55,7 @@ def ConfigSectionMap(section):
                 DebugPrint("skip: %s" % option)
         except:
             print("exception on %s!" % option)
+	    logging.info("exception on %s!" % option)
             dict1[option] = None
     return dict1
 
@@ -61,8 +65,10 @@ def banIP(IP, dport, service, timer = BANTIMER):
     """
 
     print 'banIP:'
+    logging.info('banIP:')
     if (IP, service) in bannedIPs:
         print 'IP:' + IP + 'is already BANNED'
+        logging.info('IP:' + IP + 'is already BANNED')
         return 1
     else:
         ip = bannedIP(IP, time.time(), service, timer)
@@ -78,6 +84,7 @@ def banIP(IP, dport, service, timer = BANTIMER):
         bannedIPs[(ip.IP, service)] = ip
         chain.insert_rule(ip.rule)
         print 'IP:' + ip.IP + ' BANNED at ' + time.strftime("%b %d %H:%M:%S")
+        logging.info('IP:' + ip.IP + ' BANNED at ' + time.strftime("%b %d %H:%M:%S"))
         resp = {"action": BANNEDIP, "data":{"IP":ip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(ip.time)), "timer":ip.timer, "service":ip.service}}
         server.send_message_to_all(json.dumps(resp))
 
@@ -86,28 +93,49 @@ def unbanIP(IP, service):
         print 'unbanIP:'
         if (IP, service) not in bannedIPs:
             print 'IP:' + IP + 'is already UNBANNED'
+            logging.info('IP:' + IP + 'is already UNBANNED')
             return 0
         else:
             chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
             chain.delete_rule(bannedIPs[IP, service].rule)
             print 'IP:' + IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
+            logging.info('IP:' + IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S"))
             del(bannedIPs[(IP, service)])
         
 def unbanIPcallback(arg):
      
      if DEBUG:
      	 print 'callback:'
+         logging.info('callback:')
 
      for bannedIP in bannedIPs.values():
          print 'bannedIP is ' + bannedIP.IP
+         logging.info('bannedIP is ' + bannedIP.IP)
          if time.time() - bannedIP.time >= bannedIP.timer :
+             print 'Unbanning IP: ' + bannedIP.IP
+             logging.info('Unbanning IP: ' + bannedIP.IP)
              chain = iptc.Chain(iptc.Table(iptc.Table.FILTER), "INPUT")
              chain.delete_rule(bannedIP.rule)
              print 'IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S")
+             logging.info('IP:' + bannedIP.IP + ' UNBANNED at ' + time.strftime("%b %d %H:%M:%S"))
              del(bannedIPs[(bannedIP.IP, bannedIP.service)])
 	     resp = {"action": UNBANNEDIP, "data":{"IP":bannedIP.IP, "service":bannedIP.service}}
 	     server.send_message_to_all(json.dumps(resp))
      
+def changeConfig(bantimer, nofailedattempts, failinterval,service):
+    print 'Changing configuration:' 
+    logging.info('Changing configuration:')
+    
+    try:
+        ibantimer = int(bantimer)if bantimer else None
+        inofailedattempts = int(nofailedattempts) if nofailedattempts else None
+        ifailinterval = int(failinterval)if failinterval else None
+    except Exception as e:
+        print "Failed converting to int:", e, ". So, not updating"
+        #logging.info("Failed converting to int:", e, ". So, not updating")
+        return
+
+    service.updateValues(ibantimer,inofailedattempts,ifailinterval)
 
 class service():
     def __init__(self, name, port, 
@@ -118,6 +146,11 @@ class service():
         self.thresholdFailedAttempts = tfa
         self.failedAttemptsInterval = fai
         self.banTimer =  banTimer
+    def updateValues(self,bantimer, thresholdFailedAttempts, failedAttemptsInterval):
+        self.banTimer = bantimer if bantimer else self.banTimer
+        self.thresholdFailedAttempts = thresholdFailedAttempts if thresholdFailedAttempts else self.thresholdFailedAttempts
+        self.failedAttemptsInterval = failedAttemptsInterval if failedAttemptsInterval else self.failedAttemptsInterval
+        print "Updated values for %s: timer(%d), thresholdFailedAttempts(%d), failedAttemptsInterval(%d)" %(self.name, self.banTimer, self.thresholdFailedAttempts, self.failedAttemptsInterval)
 
 class IP(object):
     def __init__(self, IP, time):
@@ -146,7 +179,8 @@ class EventHandler(pyinotify.ProcessEvent):
             
     def process_IN_MODIFY(self, event):
         print "Modified:", event.pathname
-        lines = self.files[event.pathname].readlines()
+        logging.info("Modified:", event.pathname)
+        line = self.files[event.pathname].readlines()
         for line in lines:
             for service in services.values():
                 m = re.search(service.pattern,line)
@@ -154,17 +188,16 @@ class EventHandler(pyinotify.ProcessEvent):
                     ip = m.group('HOST')
                     ftime = m.group('TIME')
                     print service.name, ': Failed attempt from ', ip, ' at ', ftime
+                    logging.info(service.name, ': Failed attempt from ', ip, ' at ', ftime)
                     # Determine to ban or not to ban
                     # If to ban, clear all failed attempts in failedAttempts from this IP  
                     # Else if not to ban, append this failed attempt from this IP to attempt list for this IP in failedAttempts
                     fip = failedAttemptIP(ip, time.time(), service.name)
                     fip.rate = 1
 
-		    print "FIP start: ", fip.IP, fip.service, fip.time
                     # Rate of failed attempts should not be more than thresholdfailedAttempts  within
                     # failedAttemptInterval seconds
                     if (fip.IP, fip.service) in failedAttempts:
-			print "we found"
                         fipAttempts = failedAttempts[(fip.IP, fip.service)]
                     # Every failed attempt has its start and end interval
                     # If this fip failed attempt falls within such interval of a failed attempt,
@@ -176,6 +209,7 @@ class EventHandler(pyinotify.ProcessEvent):
                         while length > 0:
                                 if fip.time > fipAttempts[0].time + service.failedAttemptsInterval:
                                     print 'Clear failed attempts whose time interval has expired'
+                                    logging.info('Clear failed attempts whose time interval has expired')
                                     fipAttempts.pop()
                                     length -= 1
                                     continue
@@ -183,6 +217,7 @@ class EventHandler(pyinotify.ProcessEvent):
                                     fipAttempts[j].rate+=1
                                     if fipAttempts[j].rate >= service.thresholdFailedAttempts:
                                         print 'Failed attempt rate exceeded for IP:' + fip.IP + '. BAN'
+                                        logging.info('Failed attempt rate exceeded for IP:' + fip.IP + '. BAN')
                                         banIP(fip.IP, service.port, service.name, service.banTimer)
                                         resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
                                         server.send_message_to_all(json.dumps(resp))
@@ -193,17 +228,21 @@ class EventHandler(pyinotify.ProcessEvent):
                                 
                         if not ban : 
                             print 'Append this failed attempt'
+                            logging.info('Append this failed attempt')
                             failedAttempts[(fip.IP, fip.service)].append(fip)
                             resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
                             server.send_message_to_all(json.dumps(resp))
 
                     else:
                         print "First failed attempt from IP: " + fip.IP
+                        logging.info("First failed attempt from IP: " + fip.IP)
                         if service.thresholdFailedAttempts <= 1:
                             print "Threshold for serivce:" + service.name + 'is 1. BAN' 
+                            logging.info("Threshold for serivce:" + service.name + 'is 1. BAN')
                             banIP(fip.IP, service.port, service.name, service.banTimer)
                         else:
                             print  'Append this attempt to failedAttempts'
+                            logging.info('Append this attempt to failedAttempts')
                             fip.rate = 1
                             failedAttempts[(fip.IP, service.name)] = [fip]
                             resp = {"action": FAILEDATTEMPT, "data":{"IP":fip.IP, "time":time.strftime("%b %d %H:%M:%S", time.localtime(fip.time)), "service":fip.service}}
@@ -218,31 +257,38 @@ def webServer():
 
     def new_client(client, server):
         print("New client connected and was given id %d" % client['id'])
+        logging.info("New client connected and was given id %d" % client['id'])
 
     def client_left(client, server):
         print("Client(%d) disconnected" % client['id'])
+        logging.info("Client(%d) disconnected" % client['id'])
 
     def message_received(client, server, message):
-        print("received message from client id %d " %  client['id'])
+        #print("received message from client id %d " %  client['id'])
+        #logging.info("received message from client id %d " %  client['id'])
         msg = json.loads(message)
 
         if msg["action"] == AUTHENTICATE:
             print 'msg is AUTHENTICATE' 
+            logging.info('msg is AUTHENTICATE')
             resp = {"action": AUTHENTICATE, "data": None}
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
 
             if username and password and users.has_key(username) and password == users[username]:
                 print "AUTHSUCCESS"
+                logging.info("AUTHSUCCESS")
                 resp["data"] = AUTHSUCCESS
             else:
                 print "AUTHFAIL"
+                logging.info("AUTHFAIL")
                 resp["data"] = AUTHFAIL
                 
             server.send_message(client, json.dumps(resp) )
             
         elif msg["action"] == GETBANNEDIPs:
-            print 'msg is GETBANNEDIPs' 
+            #print 'msg is GETBANNEDIPs' 
+            #logging.info('msg is GETBANNEDIPs')
             resp = {"action": GETBANNEDIPs, "data": []}
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
@@ -258,11 +304,13 @@ def webServer():
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"
+                logging.info("AUTHFAIL")
                 resp["data"] = AUTHFAIL
                 server.send_message(client, json.dumps(resp))
         
         elif msg["action"] == GETFAILEDATTEMPTs:
             print 'msg is GETFAILEDATTEMPTs' 
+            logging.info('msg is GETFAILEDATTEMPTs')
             resp = {"action": GETFAILEDATTEMPTs, "data": []}
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
@@ -282,11 +330,13 @@ def webServer():
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"
+                logging.info("AUTHFAIL")
                 resp["data"] = AUTHFAIL
                 server.send_message(client, json.dumps(resp))
 
         elif msg["action"] == UNBANIPs:
             print 'msg is UNBANIPs'
+            logging.info('msg is UNBANIPs')
             resp = {"action": UNBANIPs, "data": {}}
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
@@ -297,8 +347,20 @@ def webServer():
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"
+                logging.info("AUTHFAIL")
                 resp["data"] = AUTHFAIL
                 server.send_message(client, json.dumps(resp))
+	elif msg["action"] == CHANGECONFIG:
+	    print 'msg is CHANGECONFIG'
+            logging.info('msg is CHANGECONFIG')
+            #changeconfig(bantimer,nofailedattempts,failinterval)
+            data = msg["data"]
+            for service in services.values():
+                if service.name.lower() == data.get("service").lower():
+                    changeConfig(data.get("bantimer"), data.get("threshold"), data.get("interval"), service)
+            #server.send_message(client, json.dumps(resp))
+	    
+
 
     
     global server        
@@ -310,6 +372,7 @@ def webServer():
     server.run_forever()
     
 
+logging.basicConfig(filename='ips.log',level=logging.DEBUG)
 Config = ConfigParser.ConfigParser()
 Config.read(CONFIG_FILE)
 for eachsection in Config.sections():
@@ -320,9 +383,11 @@ for eachsection in Config.sections():
        MODULAR_CONFIG[eachsection]["pattern"] = ConfigSectionMap(eachsection)["pattern"]
    except Exception as e:
        print "Error reading config file:", e
+       logging.error("Error reading config file:", e)
        sys.exit(0)
 
 print "Configuration read."
+logging.info("Configuration read.")
 pprint.pprint (MODULAR_CONFIG)
 pathstowatch = []
 for eachserv in MODULAR_CONFIG:

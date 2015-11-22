@@ -30,7 +30,7 @@
 
     <div class="container">
 	<div class="jumbotron" id="authenticate" style="background-color: rgba(238, 238, 238, 0.8);">
-	  <h1 class="center-block" style="width: 800px;">Intrusion Prevention System</h1>
+	  <h1 class="center-block" style="width: 800px;"> Modular Intrusion Prevention System</h1>
           <form class="form-signin">
  	   <h2 class="form-signin-heading">IPS Login</h2>
  	   <h4 id="authFail" style="display:none; color:red">Authentication Failed</h4>
@@ -49,6 +49,7 @@
           <ul>
             <li><a href="#tabs-1">Banned IPs</a></li>
             <li><a href="#tabs-2">Failed Attempts</a></li>
+            <li><a href="#tabs-3">Configuration</a><li>
           </ul>
           <div id="tabs-1">
           <table id="tableBannedIPs" class="table" style="width:100%">
@@ -79,9 +80,22 @@
 	   </thead>
          </table>
           </div>
+       <div id="tabs-3">
+	 <ul id="configuration"></ul>
+	 <form id="changeconfig">
+	     <select id="service">
+    	     <option value="joomla">Joomla</option>
+             <option value="wordpress">Wordpress</option>
+             <option value="ssh">SSH</option>
+             <option value="phpmyadmin">PHPmyAdmin</option>
+             </select><br>
+             Time for which IP is banned:<input type="text" id="bantimer"  name="bantimer" placeholder=""/><br>
+             No of failed attempts allowed:<input type="text" id="threshold" name="threshold" placeholder=""/><br>
+	     Failed attempt interval:<input type="text" id="interval" name="interval" placeholder=""/><br>
+             <input type="submit" value="Submit"/>
+          </form>
         </div>
-
-
+       </div>
   </body>
 <script>
 $(function() {
@@ -96,7 +110,7 @@ BANNEDIP = 5
 UNBANNEDIP = 6
 FAILEDATTEMPT = 7
 UNBANIPs = 8
-
+CHANGECONFIG = 9
 
 
 authAttempt = 0
@@ -179,6 +193,18 @@ $('.form-signin').submit(function(event){
     }
 })
 
+$("#changeconfig").submit(function(event){
+    event.preventDefault();
+    $('#authFail').slideUp()
+    bantimer = $('#bantimer').val()
+    threshold = $('#threshold').val()
+    interval = $('#interval').val()
+    service = $('#service').val()
+    console.log("send configuration from client")
+    m = {action: CHANGECONFIG, data: {bantimer: bantimer, threshold: threshold, interval: interval, service: service}}
+    ws.send(JSON.stringify(m))
+})
+
 function authenticate(){
         msg = {action: AUTHENTICATE, data:{username:username, password:password}}
         ws.send(JSON.stringify(msg))
@@ -201,6 +227,12 @@ function showFailedAttempt(ip, attemptsArr, service){
     for(i=0;i<attemptsArr.length;i++){
         $('<tr><td>'+ip+'</td><td>'+service+'</td><td>'+attemptsArr[i]+'</td></tr>').appendTo($('#tableFailedAttempts thead'))
     }
+}
+
+function changeConfig(){
+    console.log("send configuration from client")
+    m = {action: CHANGECONFIG, data: {username: username, password: password}}
+    ws.send(JSON.stringify(m))
 }
 
 function showBannedIP(ip, iptime, iptimer, service){
