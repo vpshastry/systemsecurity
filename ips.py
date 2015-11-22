@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import pprint
 import threading
 import pyinotify
 import iptc
@@ -8,8 +9,11 @@ import sys
 import os
 import re
 import json
+import ConfigParser
 from websocket_server import WebsocketServer
 
+
+CONFIG_FILE = "config"
 # TODO: 
 DEBUG = False
 
@@ -33,10 +37,23 @@ FAILEDATTEMPT = 7
 UNBANIPs = 8
 server = None
 
+MODULAR_CONFIG = {}
 failedAttempts = {}
 bannedIPs = {}
 services = {}
 
+def ConfigSectionMap(section):
+    dict1 = {}
+    options = Config.options(section)
+    for option in options:
+        try:
+            dict1[option] = Config.get(section, option)
+            if dict1[option] == -1:
+                DebugPrint("skip: %s" % option)
+        except:
+            print("exception on %s!" % option)
+            dict1[option] = None
+    return dict1
 
 def banIP(IP, dport, service, timer = BANTIMER):
     """Returns 1 if IP is already BANNED/UNBANNED
@@ -133,6 +150,8 @@ class EventHandler(pyinotify.ProcessEvent):
         for line in lines:
             for service in services.values():
                 m = re.search(service.pattern,line)
+                if not m:
+                   print "did not match"
                 if m:
                     ip = m.group('HOST')
                     ftime = m.group('TIME')
@@ -293,30 +312,39 @@ def webServer():
     server.run_forever()
     
 
-s = service("JOOMLA", "80")
-s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}) .* jauthlog.*Username and password do not.*from (?P<HOST>\S+)')
-services[s.name] = s
+Config = ConfigParser.ConfigParser()
+Config.read(CONFIG_FILE)
+for eachsection in Config.sections():
+   try:
+       MODULAR_CONFIG[eachsection] = {}
+       MODULAR_CONFIG[eachsection]["path"] = ConfigSectionMap(eachsection)["path"]
+       MODULAR_CONFIG[eachsection]["port"] = ConfigSectionMap(eachsection)["port"]
+       MODULAR_CONFIG[eachsection]["pattern"] = ConfigSectionMap(eachsection)["pattern"]
+   except Exception as e:
+       print "Error reading config file:", e
+       sys.exit(0)
 
-s = service("WORDPRESS", "80")
-s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}) .* wordpress.* Authentication failure.*from (?P<HOST>\S+)')
-services[s.name] = s
-
-s = service("SSH", "22")
-s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}) .* sshd.* Failed .*from (?P<HOST>\S+)')
-services[s.name] = s
-
-s = service("PHPMYADMIN", "80")
-s.pattern = re.compile(r'(?P<TIME>\D\D\D [ \d]\d \d{2}:\d{2}:\d{2}).* phpmyadmin.* failed login from (?P<HOST>\S+),')
-services[s.name] = s
+pprint.pprint (MODULAR_CONFIG)
+pathstowatch = []
+for eachserv in MODULAR_CONFIG:
+    print MODULAR_CONFIG[eachserv]["port"], type(MODULAR_CONFIG[eachserv]["port"])
+    print MODULAR_CONFIG[eachserv]["path"], type(MODULAR_CONFIG[eachserv]["path"])
+    print MODULAR_CONFIG[eachserv]["pattern"], type(MODULAR_CONFIG[eachserv]["pattern"])
+    s = service(eachserv, MODULAR_CONFIG[eachserv]["port"])
+    s.pattern = re.compile(MODULAR_CONFIG[eachserv]["pattern"])
+    services[s.name] = s
+    # Add all unique paths to watch
+    if not MODULAR_CONFIG[eachserv]["path"] in pathstowatch:
+        pathstowatch.append(MODULAR_CONFIG[eachserv]["path"])
 
 wm = pyinotify.WatchManager()
 mask = pyinotify.IN_MODIFY
-pathname = ["/var/log/auth.log", "/var/log/apache2/error.log"]
+print pathstowatch
 
 
-handler = EventHandler(monitoredf = pathname)
+handler = EventHandler(monitoredf = pathstowatch)
 notifier = pyinotify.Notifier(wm, handler, timeout = TIMEOUT)
-wdd = wm.add_watch(pathname, mask, rec=False)
+wdd = wm.add_watch(pathstowatch, mask, rec=False)
 t = threading.Thread(name='webserver', target=webServer)
 t.setDaemon(True)
 t.start()
