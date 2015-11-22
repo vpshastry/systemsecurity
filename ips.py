@@ -236,6 +236,7 @@ def webServer():
                     ip["IP"] = bannedIP.IP
                     ip["time"] = time.strftime("%b %d %H:%M:%S", time.localtime(bannedIP.time))
                     ip["timer"] = bannedIP.timer - (time.time() - bannedIP.time)
+                    ip["service"] = bannedIP.service
                     resp["data"].append(ip)
                 server.send_message(client, json.dumps(resp))
             else:
@@ -250,6 +251,8 @@ def webServer():
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
             if username and password and users.has_key(username) and password == users[username]:
                 for failedAttempt in failedAttempts:
+                    print "in FA"
+                    print "FA=" + str(failedAttempt)
                     ip = {}
                     ip["IP"] = failedAttempt[0]
                     ip["attempts"] = []
@@ -271,9 +274,9 @@ def webServer():
             username = msg["data"].get("username") if msg["data"].has_key("username") else None
             password = msg["data"].get("password") if msg["data"].has_key("password") else None
             if username and password and users.has_key(username) and password == users[username]:
-	        unbanIP(IP, msg["data"].IP, msg["data"].service)
-	        resp["data"]["IP"] = msg["data"].IP
-	        resp["data"]["service"] = msg["data"].service
+	        unbanIP(msg["data"]["IP"], msg["data"]["service"])
+	        resp["data"]["IP"] = msg["data"]["IP"]
+	        resp["data"]["service"] = msg["data"]["service"]
                 server.send_message(client, json.dumps(resp))
             else:
                 print "AUTHFAIL"

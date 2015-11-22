@@ -139,8 +139,8 @@ $('.form-signin').submit(function(event){
 		    for(i in msg.data){
 		        ip = msg.data[i].IP
 			time = msg.data[i].time
-			timer = msg.data[i].timer
-			showBannedIP(ip, time, timer)
+			timer = msg.data[i].timer.toFixed(1)
+			showBannedIP(ip, time, timer, msg.data[i].service)
 		    }
 		}
 		else
@@ -152,7 +152,7 @@ $('.form-signin').submit(function(event){
 		    for(i in msg.data){
 		        ip = msg.data[i].IP
 			attempts = msg.data[i].attempts
-			showFailedAttempt(ip, attempts, msg.data[i].service)
+			showFailedAttempt(ip, attempts, msg.data.service)
 		    }
 		}
 		else
@@ -162,7 +162,7 @@ $('.form-signin').submit(function(event){
 	        showFailedAttempt(msg.data.IP, [msg.data.time], msg.data.service) 
 	    }
 	    else if(msg.action == BANNEDIP){
-	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer, msg.data.service) 
+	        showBannedIP(msg.data.IP, msg.data.time, msg.data.timer.toFixed(1), msg.data.service) 
 	    }
 	    else if(msg.action == UNBANNEDIP){
 	        $(document.getElementById(msg.data.IP + msg.data.service)).remove()
@@ -172,6 +172,8 @@ $('.form-signin').submit(function(event){
         ws.onopen = authenticate
     }
     else{
+    username = $('#inputUsername').val()
+    password = SHA1($('#inputPassword').val())
         authenticate()
     }
 })
@@ -203,10 +205,10 @@ function showFailedAttempt(ip, attemptsArr, service){
 function showBannedIP(ip, iptime, iptimer, service){
     console.log("showBannedIP ip=" + ip +  " " + iptime + " " + iptimer  )
     $('<tr id="'+ip+service+'"><td>'+ip+'</td><td>'+service+'</td><td>'+iptimer+'</td><td>'+iptime+'</td><td><button id="button'+ip+service+'" type="button">Unban</button></td></tr>').appendTo($('#tableBannedIPs thead'))
-        $('#button'+ip+service).click(function(event){
+        $(document.getElementById('button'+ip+service)).click(function(event){
 	 m = {action: UNBANIPs, data: {username: username, password: password, IP:ip, service: service}}
 	 ws.send(JSON.stringify(m))
-         $('#'+ip+service).remove()
+         $(document.getElementById(ip+service)).remove()
 
 })
 
