@@ -322,12 +322,10 @@ for eachsection in Config.sections():
        print "Error reading config file:", e
        sys.exit(0)
 
+print "Configuration read."
 pprint.pprint (MODULAR_CONFIG)
 pathstowatch = []
 for eachserv in MODULAR_CONFIG:
-    print MODULAR_CONFIG[eachserv]["port"], type(MODULAR_CONFIG[eachserv]["port"])
-    print MODULAR_CONFIG[eachserv]["path"], type(MODULAR_CONFIG[eachserv]["path"])
-    print MODULAR_CONFIG[eachserv]["pattern"], type(MODULAR_CONFIG[eachserv]["pattern"])
     s = service(eachserv, MODULAR_CONFIG[eachserv]["port"])
     s.pattern = re.compile(MODULAR_CONFIG[eachserv]["pattern"])
     services[s.name] = s
@@ -337,7 +335,6 @@ for eachserv in MODULAR_CONFIG:
 
 wm = pyinotify.WatchManager()
 mask = pyinotify.IN_MODIFY
-print pathstowatch
 
 
 handler = EventHandler(monitoredf = pathstowatch)
